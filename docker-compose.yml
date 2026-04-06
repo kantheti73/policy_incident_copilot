@@ -59,10 +59,35 @@ services:
     networks:
       - copilot-net
 
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    ports:
+      - "3001:8080"
+    environment:
+      # Connect to our copilot backend as an OpenAI-compatible API
+      - OPENAI_API_BASE_URL=http://copilot-app:8080/v1
+      - OPENAI_API_KEY=not-needed
+      # Disable Ollama since we're using our own backend
+      - OLLAMA_BASE_URL=
+      - ENABLE_OLLAMA_API=false
+      # WebUI settings
+      - WEBUI_NAME=Policy & Incident Copilot
+      - WEBUI_AUTH=false
+      - DEFAULT_MODELS=policy-copilot
+      - ENABLE_SIGNUP=true
+    volumes:
+      - open-webui-data:/app/backend/data
+    depends_on:
+      - copilot-app
+    networks:
+      - copilot-net
+    restart: unless-stopped
+
 volumes:
   neo4j-data:
   prometheus-data:
   grafana-data:
+  open-webui-data:
 
 networks:
   copilot-net:

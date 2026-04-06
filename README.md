@@ -1,14 +1,24 @@
 # Policy & Incident Copilot
 
-An intelligent internal assistant that helps employees answer policy/procedure questions and perform first-pass incident triage using **LangChain4J**, **LangGraph4J**, **Pinecone**, **Neo4J**, and **Prometheus**.
+An intelligent internal assistant that helps employees answer policy/procedure questions and perform first-pass incident triage using **LangChain4J**, **LangGraph4J**, **Pinecone**, **Neo4J**, **Prometheus**, and **Open WebUI**.
 
 ## Architecture Overview
 
 ```
-                    +-------------------+
-                    |   REST API        |
-                    |  /api/v1/copilot  |
-                    +--------+----------+
+  +--------------------+
+  |   Open WebUI       |  <-- Chat UI (port 3001)
+  |  (Browser-based)   |
+  +--------+-----------+
+           | OpenAI-compatible API
+  +--------v-----------+
+  |   /v1/chat/        |
+  |   completions      |
+  +--------+-----------+
+           |
+  +--------v-----------+
+  |   REST API         |
+  |  /api/v1/copilot   |
+  +--------+-----------+
                              |
                     +--------v----------+
                     |  Guardrails Engine |
@@ -88,6 +98,7 @@ An intelligent internal assistant that helps employees answer policy/procedure q
 
 | Component | Technology |
 |-----------|-----------|
+| Chat UI | Open WebUI |
 | Framework | Spring Boot 3.3 |
 | LLM Integration | LangChain4J 0.36 |
 | Agent Orchestration | LangGraph4J 1.5 |
@@ -106,9 +117,11 @@ src/main/java/com/copilot/
 ├── PolicyIncidentCopilotApplication.java    # Entry point
 ├── config/
 │   ├── LangChainConfig.java                # LLM + embeddings + vector store
-│   └── Neo4jConfig.java                    # Graph database
+│   ├── Neo4jConfig.java                    # Graph database
+│   └── WebConfig.java                      # CORS + async SSE for Open WebUI
 ├── controller/
-│   └── CopilotController.java              # REST API endpoints
+│   ├── CopilotController.java              # REST API endpoints
+│   └── OpenAICompatibleController.java     # OpenAI-format API for Open WebUI
 ├── service/
 │   ├── CopilotService.java                 # Core orchestration logic
 │   └── PolicyIngestionService.java         # Document ingestion pipeline
@@ -173,20 +186,26 @@ src/main/java/com/copilot/
    export PINECONE_ENVIRONMENT=us-east-1            # optional
    ```
 
-3. **Start infrastructure (Neo4J, Prometheus, Grafana)**
-   ```bash
-   docker-compose up -d neo4j prometheus grafana
-   ```
-
-4. **Run the application**
-   ```bash
-   ./mvnw spring-boot:run
-   ```
-
-5. **Or run everything with Docker**
+3. **Start everything with Docker (recommended)**
    ```bash
    docker-compose up --build
    ```
+
+4. **Or start infrastructure separately and run locally**
+   ```bash
+   # Start Neo4J, Prometheus, Grafana, and Open WebUI
+   docker-compose up -d neo4j prometheus grafana open-webui
+
+   # Run the Spring Boot app locally
+   ./mvnw spring-boot:run
+   ```
+
+5. **Open the Chat UI**
+   - Navigate to **http://localhost:3001**
+   - Open WebUI will auto-detect two models:
+     - **policy-copilot** — General policy Q&A (auto-routes single/multi)
+     - **incident-triage** — Forces multi-agent triage mode
+   - Start chatting!
 
 ### API Usage
 
@@ -227,8 +246,23 @@ curl -X POST http://localhost:8080/api/v1/copilot/ingest \
   }'
 ```
 
+### Open WebUI Chat Interface
+
+Open WebUI provides a polished ChatGPT-style interface for the copilot:
+
+- **URL**: http://localhost:3001
+- **Model Selection**: Use the model dropdown to switch between:
+  - `policy-copilot` — Auto-routed (simple queries go single-agent, complex go multi-agent)
+  - `incident-triage` — Always uses the multi-agent Planner->Researcher->Orchestrator->Critic pipeline
+- **Streaming**: Responses stream in real-time via SSE
+- **Rich Output**: Citations, triage tickets, and guardrail flags are rendered as markdown
+- **Conversation History**: Open WebUI manages chat history on its own
+
+**How it works**: Open WebUI connects to our backend via the OpenAI-compatible `/v1/chat/completions` endpoint. The `OpenAICompatibleController` translates between OpenAI chat format and our `CopilotService`, then formats the response with citations, triage tickets, and metadata back into markdown.
+
 ### Monitoring
 
+- **Open WebUI**: http://localhost:3001
 - **Prometheus**: http://localhost:9090
 - **Grafana**: http://localhost:3000 (admin/admin)
 - **Neo4J Browser**: http://localhost:7474
