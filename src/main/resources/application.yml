@@ -1,0 +1,84 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: policy-incident-copilot
+
+  neo4j:
+    uri: ${NEO4J_URI:bolt://localhost:7687}
+    authentication:
+      username: ${NEO4J_USERNAME:neo4j}
+      password: ${NEO4J_PASSWORD:password}
+
+# LangChain4J Configuration
+langchain4j:
+  anthropic:
+    chat-model:
+      api-key: ${ANTHROPIC_API_KEY:}
+      model-name: claude-sonnet-4-20250514
+      max-tokens: 4096
+      temperature: 0.1
+
+# Pinecone Configuration
+pinecone:
+  api-key: ${PINECONE_API_KEY:}
+  environment: ${PINECONE_ENVIRONMENT:us-east-1}
+  index-name: ${PINECONE_INDEX:policy-documents}
+  namespace: ${PINECONE_NAMESPACE:policies}
+  dimension: 384
+
+# Copilot Configuration
+copilot:
+  routing:
+    complexity-threshold: 0.6
+    high-risk-keywords:
+      - disable mfa
+      - ignore policy
+      - bypass
+      - override security
+      - delete all
+      - shut down
+  guardrails:
+    max-input-length: 50000
+    max-steps-single-agent: 3
+    max-steps-multi-agent: 10
+    pii-patterns:
+      - "\\b\\d{3}-\\d{2}-\\d{4}\\b"          # SSN
+      - "\\b\\d{16}\\b"                        # Credit card
+      - "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z]{2,}\\b"  # Email
+      - "\\b\\d{3}[-.\\s]?\\d{3}[-.\\s]?\\d{4}\\b"            # Phone
+  memory:
+    max-conversation-turns: 20
+    sensitive-keywords:
+      - password
+      - secret
+      - token
+      - api-key
+      - credential
+  retry:
+    max-attempts: 3
+    backoff-ms: 1000
+
+# Actuator / Prometheus
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+  tracing:
+    sampling:
+      probability: 1.0
+
+logging:
+  level:
+    com.copilot: DEBUG
+    dev.langchain4j: INFO
+  pattern:
+    console: "%d{ISO8601} [%thread] [traceId=%X{traceId}] %-5level %logger{36} - %msg%n"

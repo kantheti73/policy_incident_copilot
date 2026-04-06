@@ -1,0 +1,32 @@
+spring:
+  neo4j:
+    uri: bolt://localhost:7687
+    authentication:
+      username: neo4j
+      password: test
+
+copilot:
+  routing:
+    complexity-threshold: 0.6
+    high-risk-keywords:
+      - disable mfa
+      - ignore policy
+      - bypass
+      - override security
+  guardrails:
+    max-input-length: 50000
+    max-steps-single-agent: 3
+    max-steps-multi-agent: 10
+    pii-patterns:
+      - "\\b\\d{3}-\\d{2}-\\d{4}\\b"
+      - "\\b\\d{16}\\b"
+      - "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z]{2,}\\b"
+      - "\\b\\d{3}[-.\\s]?\\d{3}[-.\\s]?\\d{4}\\b"
+  memory:
+    max-conversation-turns: 10
+    sensitive-keywords:
+      - password
+      - secret
+      - token
+      - api-key
+      - credential
