@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 import static org.bsc.langgraph4j.StateGraph.END;
+import static org.bsc.langgraph4j.StateGraph.START;
 import static org.bsc.langgraph4j.action.AsyncEdgeAction.edge_async;
 import static org.bsc.langgraph4j.action.AsyncNodeAction.node_async;
 
@@ -39,86 +40,80 @@ public class MultiAgentGraph {
     public StateGraph<AgentState> build() throws Exception {
         log.info("Building Multi-Agent LangGraph4J graph");
 
-        StateGraph<AgentState> graph = new StateGraph<>(AgentState::new);
+        StateGraph<AgentState> graph = new StateGraph<>(AgentState::new)
 
-        // Define nodes
-        graph.addNode("input_guardrail", node_async(state -> {
-            GraphState gs = extractGraphState(state);
-            gs = guardrailsEngine.applyInputGuardrails(gs);
-            return updateState(state, gs);
-        }));
-
-        graph.addNode("planner", node_async(state -> {
-            GraphState gs = extractGraphState(state);
-            if (gs.getError() != null) return state.data();
-            gs = plannerAgent.execute(gs);
-            return updateState(state, gs);
-        }));
-
-        graph.addNode("researcher", node_async(state -> {
-            GraphState gs = extractGraphState(state);
-            if (gs.getError() != null) return state.data();
-            gs = researcherAgent.execute(gs);
-            return updateState(state, gs);
-        }));
-
-        graph.addNode("orchestrator", node_async(state -> {
-            GraphState gs = extractGraphState(state);
-            if (gs.getError() != null) return state.data();
-            gs = orchestratorAgent.execute(gs);
-            return updateState(state, gs);
-        }));
-
-        graph.addNode("critic", node_async(state -> {
-            GraphState gs = extractGraphState(state);
-            if (gs.getError() != null) return state.data();
-            gs = criticAgent.execute(gs);
-            return updateState(state, gs);
-        }));
-
-        graph.addNode("output_guardrail", node_async(state -> {
-            GraphState gs = extractGraphState(state);
-            if (gs.getError() != null) return state.data();
-            gs = guardrailsEngine.applyOutputGuardrails(gs);
-            return updateState(state, gs);
-        }));
-
-        // Define edges
-        graph.addEdge("input_guardrail", "planner");
-        graph.addEdge("planner", "researcher");
-        graph.addEdge("researcher", "orchestrator");
-        graph.addEdge("orchestrator", "critic");
-
-        // Conditional edge: Critic can approve → output_guardrail or revise → researcher
-        graph.addConditionalEdges("critic",
-                edge_async(state -> {
+                // Define nodes
+                .addNode("input_guardrail", node_async(state -> {
                     GraphState gs = extractGraphState(state);
-                    if (gs.isSafetyApproved() || gs.isStepLimitReached()) {
-                        return "output_guardrail";
-                    }
-                    return "researcher";
-                }),
-                Map.of(
-                        "output_guardrail", "output_guardrail",
-                        "researcher", "researcher"
+                    gs = guardrailsEngine.applyInputGuardrails(gs);
+                    return Map.of("graphState", (Object) gs);
+                }))
+
+                .addNode("planner", node_async(state -> {
+                    GraphState gs = extractGraphState(state);
+                    if (gs.getError() != null) return Map.of("graphState", (Object) gs);
+                    gs = plannerAgent.execute(gs);
+                    return Map.of("graphState", (Object) gs);
+                }))
+
+                .addNode("researcher", node_async(state -> {
+                    GraphState gs = extractGraphState(state);
+                    if (gs.getError() != null) return Map.of("graphState", (Object) gs);
+                    gs = researcherAgent.execute(gs);
+                    return Map.of("graphState", (Object) gs);
+                }))
+
+                .addNode("orchestrator", node_async(state -> {
+                    GraphState gs = extractGraphState(state);
+                    if (gs.getError() != null) return Map.of("graphState", (Object) gs);
+                    gs = orchestratorAgent.execute(gs);
+                    return Map.of("graphState", (Object) gs);
+                }))
+
+                .addNode("critic", node_async(state -> {
+                    GraphState gs = extractGraphState(state);
+                    if (gs.getError() != null) return Map.of("graphState", (Object) gs);
+                    gs = criticAgent.execute(gs);
+                    return Map.of("graphState", (Object) gs);
+                }))
+
+                .addNode("output_guardrail", node_async(state -> {
+                    GraphState gs = extractGraphState(state);
+                    if (gs.getError() != null) return Map.of("graphState", (Object) gs);
+                    gs = guardrailsEngine.applyOutputGuardrails(gs);
+                    return Map.of("graphState", (Object) gs);
+                }))
+
+                // Define edges
+                .addEdge(START, "input_guardrail")
+                .addEdge("input_guardrail", "planner")
+                .addEdge("planner", "researcher")
+                .addEdge("researcher", "orchestrator")
+                .addEdge("orchestrator", "critic")
+
+                // Conditional edge: Critic can approve → output_guardrail or revise → researcher
+                .addConditionalEdges("critic",
+                        edge_async(state -> {
+                            GraphState gs = extractGraphState(state);
+                            if (gs.isSafetyApproved() || gs.isStepLimitReached()) {
+                                return "approved";
+                            }
+                            return "revise";
+                        }),
+                        Map.of(
+                                "approved", "output_guardrail",
+                                "revise", "researcher"
+                        )
                 )
-        );
 
-        graph.addEdge("output_guardrail", END);
-
-        // Set entry point
-        graph.setEntryPoint("input_guardrail");
+                .addEdge("output_guardrail", END);
 
         return graph;
     }
 
+    @SuppressWarnings("unchecked")
     private GraphState extractGraphState(AgentState state) {
-        return (GraphState) state.data().get("graphState");
-    }
-
-    private Map<String, Object> updateState(AgentState state, GraphState gs) {
-        var data = new java.util.HashMap<>(state.data());
-        data.put("graphState", gs);
-        return data;
+        return (GraphState) state.value("graphState").orElseThrow(
+                () -> new IllegalStateException("graphState not found in agent state"));
     }
 }

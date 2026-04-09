@@ -10,10 +10,9 @@ import org.bsc.langgraph4j.state.AgentState;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
-import java.util.Optional;
 
 import static org.bsc.langgraph4j.StateGraph.END;
-import static org.bsc.langgraph4j.action.AsyncEdgeAction.edge_async;
+import static org.bsc.langgraph4j.StateGraph.START;
 import static org.bsc.langgraph4j.action.AsyncNodeAction.node_async;
 
 /**
@@ -32,47 +31,41 @@ public class SingleAgentGraph {
     public StateGraph<AgentState> build() throws Exception {
         log.info("Building Single-Agent LangGraph4J graph");
 
-        StateGraph<AgentState> graph = new StateGraph<>(AgentState::new);
+        StateGraph<AgentState> graph = new StateGraph<>(AgentState::new)
 
-        // Define nodes
-        graph.addNode("input_guardrail", node_async(state -> {
-            GraphState gs = extractGraphState(state);
-            gs = guardrailsEngine.applyInputGuardrails(gs);
-            return updateState(state, gs);
-        }));
+                // Define nodes
+                .addNode("input_guardrail", node_async(state -> {
+                    GraphState gs = extractGraphState(state);
+                    gs = guardrailsEngine.applyInputGuardrails(gs);
+                    return Map.of("graphState", (Object) gs);
+                }))
 
-        graph.addNode("policy_query", node_async(state -> {
-            GraphState gs = extractGraphState(state);
-            if (gs.getError() != null) return state.data();
-            gs = policyQueryAgent.execute(gs);
-            return updateState(state, gs);
-        }));
+                .addNode("policy_query", node_async(state -> {
+                    GraphState gs = extractGraphState(state);
+                    if (gs.getError() != null) return Map.of("graphState", (Object) gs);
+                    gs = policyQueryAgent.execute(gs);
+                    return Map.of("graphState", (Object) gs);
+                }))
 
-        graph.addNode("output_guardrail", node_async(state -> {
-            GraphState gs = extractGraphState(state);
-            if (gs.getError() != null) return state.data();
-            gs = guardrailsEngine.applyOutputGuardrails(gs);
-            return updateState(state, gs);
-        }));
+                .addNode("output_guardrail", node_async(state -> {
+                    GraphState gs = extractGraphState(state);
+                    if (gs.getError() != null) return Map.of("graphState", (Object) gs);
+                    gs = guardrailsEngine.applyOutputGuardrails(gs);
+                    return Map.of("graphState", (Object) gs);
+                }))
 
-        // Define edges
-        graph.addEdge("input_guardrail", "policy_query");
-        graph.addEdge("policy_query", "output_guardrail");
-        graph.addEdge("output_guardrail", END);
-
-        // Set entry point
-        graph.setEntryPoint("input_guardrail");
+                // Define edges
+                .addEdge(START, "input_guardrail")
+                .addEdge("input_guardrail", "policy_query")
+                .addEdge("policy_query", "output_guardrail")
+                .addEdge("output_guardrail", END);
 
         return graph;
     }
 
+    @SuppressWarnings("unchecked")
     private GraphState extractGraphState(AgentState state) {
-        return (GraphState) state.data().get("graphState");
-    }
-
-    private Map<String, Object> updateState(AgentState state, GraphState gs) {
-        var data = new java.util.HashMap<>(state.data());
-        data.put("graphState", gs);
-        return data;
+        return (GraphState) state.value("graphState").orElseThrow(
+                () -> new IllegalStateException("graphState not found in agent state"));
     }
 }

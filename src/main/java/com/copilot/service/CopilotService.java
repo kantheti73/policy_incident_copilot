@@ -17,7 +17,6 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * Core service that orchestrates the copilot workflow:
@@ -104,7 +103,7 @@ public class CopilotService {
         Map<String, Object> input = Map.of("graphState", state);
 
         var resultState = compiled.invoke(input);
-        return (GraphState) resultState.orElseThrow().data().get("graphState");
+        return extractResult(resultState);
     }
 
     private GraphState executeMultiAgent(GraphState state) throws Exception {
@@ -114,7 +113,15 @@ public class CopilotService {
         Map<String, Object> input = Map.of("graphState", state);
 
         var resultState = compiled.invoke(input);
-        return (GraphState) resultState.orElseThrow().data().get("graphState");
+        return extractResult(resultState);
+    }
+
+    @SuppressWarnings("unchecked")
+    private GraphState extractResult(java.util.Optional<AgentState> resultState) {
+        AgentState finalState = resultState.orElseThrow(
+                () -> new RuntimeException("Graph execution returned no result"));
+        return (GraphState) finalState.value("graphState").orElseThrow(
+                () -> new RuntimeException("graphState missing from final agent state"));
     }
 
     private CopilotResponse buildResponse(GraphState state, long latencyMs) {

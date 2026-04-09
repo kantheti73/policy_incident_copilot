@@ -21,7 +21,7 @@
     <properties>
         <java.version>21</java.version>
         <langchain4j.version>0.36.2</langchain4j.version>
-        <langgraph4j.version>1.5.6</langgraph4j.version>
+        <langgraph4j.version>1.6.0-beta5</langgraph4j.version>
         <pinecone.version>3.0.0</pinecone.version>
     </properties>
 
@@ -81,11 +81,16 @@
             <artifactId>langchain4j-spring-boot-starter</artifactId>
             <version>${langchain4j.version}</version>
         </dependency>
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-embeddings</artifactId>
+            <version>${langchain4j.version}</version>
+        </dependency>
 
         <!-- LangGraph4J -->
         <dependency>
             <groupId>org.bsc.langgraph4j</groupId>
-            <artifactId>langgraph4j-core-jdk8</artifactId>
+            <artifactId>langgraph4j-core</artifactId>
             <version>${langgraph4j.version}</version>
         </dependency>
 
