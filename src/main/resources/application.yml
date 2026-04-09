@@ -11,15 +11,6 @@ spring:
       username: ${NEO4J_USERNAME:neo4j}
       password: ${NEO4J_PASSWORD:password}
 
-# LangChain4J Configuration
-langchain4j:
-  anthropic:
-    chat-model:
-      api-key: ${ANTHROPIC_API_KEY:}
-      model-name: claude-sonnet-4-20250514
-      max-tokens: 4096
-      temperature: 0.1
-
 # Pinecone Configuration
 pinecone:
   api-key: ${PINECONE_API_KEY:}
@@ -30,15 +21,32 @@ pinecone:
 
 # Copilot Configuration
 copilot:
+  # LLM Provider — set one API key to activate that provider
+  llm:
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY:}
+      model-name: ${ANTHROPIC_MODEL:claude-sonnet-4-20250514}
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      model-name: ${OPENAI_MODEL:gpt-4o}
+    max-tokens: 4096
+    temperature: 0.1
   routing:
     complexity-threshold: 0.6
     high-risk-keywords:
       - disable mfa
+      - disable firewall
+      - turn off firewall
       - ignore policy
       - bypass
       - override security
       - delete all
       - shut down
+      - give me the password
+      - install software
+      - unverified software
+      - ip address
+      - network topology
   guardrails:
     max-input-length: 50000
     max-steps-single-agent: 3
@@ -48,6 +56,7 @@ copilot:
       - "\\b\\d{16}\\b"                        # Credit card
       - "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z]{2,}\\b"  # Email
       - "\\b\\d{3}[-.\\s]?\\d{3}[-.\\s]?\\d{4}\\b"            # Phone
+      - "\\b(?:10\\.\\d{1,3}|172\\.(?:1[6-9]|2\\d|3[01])|192\\.168)\\.\\d{1,3}\\.\\d{1,3}\\b"  # Internal/private IP addresses
   memory:
     max-conversation-turns: 20
     sensitive-keywords:

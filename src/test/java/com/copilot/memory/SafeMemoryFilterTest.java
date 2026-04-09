@@ -1,5 +1,6 @@
 package com.copilot.memory;
 
+import com.copilot.config.CopilotProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -13,7 +14,11 @@ class SafeMemoryFilterTest {
 
     @BeforeEach
     void setUp() {
-        filter = new SafeMemoryFilter(List.of("password", "secret", "token", "api-key", "credential"));
+        CopilotProperties props = new CopilotProperties();
+        CopilotProperties.Memory memory = new CopilotProperties.Memory();
+        memory.setSensitiveKeywords(List.of("password", "secret", "token", "api-key", "credential"));
+        props.setMemory(memory);
+        filter = new SafeMemoryFilter(props);
     }
 
     @Test

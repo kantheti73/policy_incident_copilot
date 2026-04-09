@@ -1,9 +1,9 @@
 package com.copilot.agent.router;
 
+import com.copilot.config.CopilotProperties;
 import com.copilot.model.CopilotRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 
@@ -15,10 +15,13 @@ class ComplexityClassifierTest {
 
     @BeforeEach
     void setUp() {
-        classifier = new ComplexityClassifier();
-        ReflectionTestUtils.setField(classifier, "complexityThreshold", 0.6);
-        ReflectionTestUtils.setField(classifier, "highRiskKeywords",
+        CopilotProperties props = new CopilotProperties();
+        CopilotProperties.Routing routing = new CopilotProperties.Routing();
+        routing.setComplexityThreshold(0.6);
+        routing.setHighRiskKeywords(
                 List.of("disable mfa", "ignore policy", "bypass", "override security"));
+        props.setRouting(routing);
+        classifier = new ComplexityClassifier(props);
     }
 
     @Test

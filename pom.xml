@@ -21,7 +21,7 @@
     <properties>
         <java.version>21</java.version>
         <langchain4j.version>0.36.2</langchain4j.version>
-        <langgraph4j.version>1.6.0-beta5</langgraph4j.version>
+        <langgraph4j.version>1.8.11</langgraph4j.version>
         <pinecone.version>3.0.0</pinecone.version>
     </properties>
 

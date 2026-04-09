@@ -1,7 +1,7 @@
 package com.copilot.guardrails;
 
+import com.copilot.config.CopilotProperties;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -18,8 +18,8 @@ public class PIIRedactor {
 
     private final List<Pattern> piiPatterns;
 
-    public PIIRedactor(@Value("${copilot.guardrails.pii-patterns}") List<String> patternStrings) {
-        this.piiPatterns = patternStrings.stream()
+    public PIIRedactor(CopilotProperties properties) {
+        this.piiPatterns = properties.getGuardrails().getPiiPatterns().stream()
                 .map(p -> Pattern.compile(p, Pattern.CASE_INSENSITIVE))
                 .collect(Collectors.toList());
     }

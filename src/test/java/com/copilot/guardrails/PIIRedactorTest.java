@@ -1,5 +1,6 @@
 package com.copilot.guardrails;
 
+import com.copilot.config.CopilotProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -19,7 +20,11 @@ class PIIRedactorTest {
                 "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z]{2,}\\b",  // Email
                 "\\b\\d{3}[-.\\s]?\\d{3}[-.\\s]?\\d{4}\\b"             // Phone
         );
-        redactor = new PIIRedactor(patterns);
+        CopilotProperties props = new CopilotProperties();
+        CopilotProperties.Guardrails guardrails = new CopilotProperties.Guardrails();
+        guardrails.setPiiPatterns(patterns);
+        props.setGuardrails(guardrails);
+        redactor = new PIIRedactor(props);
     }
 
     @Test

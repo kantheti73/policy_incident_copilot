@@ -1,8 +1,8 @@
 package com.copilot.agent.router;
 
+import com.copilot.config.CopilotProperties;
 import com.copilot.model.CopilotRequest;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -15,11 +15,13 @@ import java.util.List;
 @Component
 public class ComplexityClassifier {
 
-    @Value("${copilot.routing.complexity-threshold:0.6}")
-    private double complexityThreshold;
+    private final double complexityThreshold;
+    private final List<String> highRiskKeywords;
 
-    @Value("${copilot.routing.high-risk-keywords}")
-    private List<String> highRiskKeywords;
+    public ComplexityClassifier(CopilotProperties properties) {
+        this.complexityThreshold = properties.getRouting().getComplexityThreshold();
+        this.highRiskKeywords = properties.getRouting().getHighRiskKeywords();
+    }
 
     public ClassificationResult classify(CopilotRequest request) {
         double complexityScore = 0.0;

@@ -1,7 +1,7 @@
 package com.copilot.memory;
 
+import com.copilot.config.CopilotProperties;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -23,8 +23,8 @@ public class SafeMemoryFilter {
     private static final Pattern BASE64_SECRET_PATTERN = Pattern.compile(
             "(?i)(key|secret|token)\\s*[:=]\\s*[A-Za-z0-9+/=]{20,}");
 
-    public SafeMemoryFilter(@Value("${copilot.memory.sensitive-keywords}") List<String> sensitiveKeywords) {
-        this.sensitiveKeywords = sensitiveKeywords;
+    public SafeMemoryFilter(CopilotProperties properties) {
+        this.sensitiveKeywords = properties.getMemory().getSensitiveKeywords();
     }
 
     /**
