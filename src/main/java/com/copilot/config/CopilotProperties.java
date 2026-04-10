@@ -4,7 +4,9 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Data
 @Configuration
@@ -15,6 +17,7 @@ public class CopilotProperties {
     private Guardrails guardrails = new Guardrails();
     private Memory memory = new Memory();
     private Retry retry = new Retry();
+    private LlmPricing llmPricing = new LlmPricing();
 
     @Data
     public static class Routing {
@@ -40,5 +43,19 @@ public class CopilotProperties {
     public static class Retry {
         private int maxAttempts = 3;
         private int backoffMs = 1000;
+    }
+
+    @Data
+    public static class LlmPricing {
+        /** Map of model name → pricing. Use lower-case keys; lookup is case-insensitive. */
+        private Map<String, ModelPrice> models = new HashMap<>();
+    }
+
+    @Data
+    public static class ModelPrice {
+        /** USD per 1 million input tokens. */
+        private double inputPerMillion = 0.0;
+        /** USD per 1 million output tokens. */
+        private double outputPerMillion = 0.0;
     }
 }

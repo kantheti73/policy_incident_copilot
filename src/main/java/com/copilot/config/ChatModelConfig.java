@@ -1,7 +1,9 @@
 package com.copilot.config;
 
+import com.copilot.observability.TokenUsageListener;
 import dev.langchain4j.model.anthropic.AnthropicChatModel;
 import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.chat.listener.ChatModelListener;
 import dev.langchain4j.model.ollama.OllamaChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import lombok.extern.slf4j.Slf4j;
@@ -12,6 +14,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 
 import java.time.Duration;
+import java.util.List;
 
 /**
  * Configures ChatLanguageModel beans for the copilot.
@@ -56,7 +59,9 @@ public class ChatModelConfig {
 
     @Bean
     @Primary
-    public ChatLanguageModel chatLanguageModel() {
+    public ChatLanguageModel chatLanguageModel(TokenUsageListener tokenUsageListener) {
+        List<ChatModelListener> listeners = List.of(tokenUsageListener);
+
         if (isPresent(anthropicApiKey)) {
             log.info("Using Anthropic model for primary chat: {}", anthropicModel);
             return AnthropicChatModel.builder()
@@ -64,6 +69,7 @@ public class ChatModelConfig {
                     .modelName(anthropicModel)
                     .maxTokens(maxTokens)
                     .temperature(temperature)
+                    .listeners(listeners)
                     .build();
         }
 
@@ -74,6 +80,7 @@ public class ChatModelConfig {
                     .modelName(openaiModel)
                     .maxTokens(maxTokens)
                     .temperature(temperature)
+                    .listeners(listeners)
                     .build();
         }
 
@@ -87,7 +94,7 @@ public class ChatModelConfig {
      */
     @Bean
     @Qualifier("plannerModel")
-    public ChatLanguageModel plannerModel(ChatLanguageModel primaryModel) {
+    public ChatLanguageModel plannerModel(ChatLanguageModel primaryModel, TokenUsageListener tokenUsageListener) {
         if (!plannerLocalEnabled) {
             log.info("Local planner model disabled; PlannerAgent will reuse the primary chat model");
             return primaryModel;
@@ -100,6 +107,7 @@ public class ChatModelConfig {
                     .modelName(plannerModelName)
                     .temperature(temperature)
                     .timeout(Duration.ofSeconds(60))
+                    .listeners(List.of(tokenUsageListener))
                     .build();
         } catch (Exception e) {
             log.warn("Failed to configure Ollama planner model ({}): {}. Falling back to primary model.",

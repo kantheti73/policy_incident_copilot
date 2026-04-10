@@ -37,6 +37,28 @@ copilot:
       enabled: ${PLANNER_LOCAL_ENABLED:true}
       base-url: ${OLLAMA_BASE_URL:http://ollama:11434}
       model-name: ${PLANNER_MODEL:phi3:mini}
+  # Token pricing for cost-tracking metrics. Keys must be lower-case model names.
+  # USD per 1 million tokens. Update when providers change prices.
+  llm-pricing:
+    models:
+      claude-sonnet-4-20250514:
+        input-per-million: 3.00
+        output-per-million: 15.00
+      claude-opus-4-20250514:
+        input-per-million: 15.00
+        output-per-million: 75.00
+      gpt-4o:
+        input-per-million: 2.50
+        output-per-million: 10.00
+      gpt-4o-mini:
+        input-per-million: 0.15
+        output-per-million: 0.60
+      phi3:mini:
+        input-per-million: 0.00
+        output-per-million: 0.00
+      llama3.2:3b:
+        input-per-million: 0.00
+        output-per-million: 0.00
   routing:
     complexity-threshold: 0.6
     high-risk-keywords:

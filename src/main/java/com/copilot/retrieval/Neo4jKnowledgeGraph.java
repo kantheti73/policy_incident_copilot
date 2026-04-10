@@ -27,9 +27,11 @@ public class Neo4jKnowledgeGraph {
         log.debug("Querying Neo4J for policies related to: {}", topic);
 
         Collection<String> results = neo4jClient.query("""
-                MATCH (p:Policy)-[:RELATES_TO|DEPENDS_ON|SUPERSEDES*1..2]-(related:Policy)
-                WHERE toLower(p.title) CONTAINS toLower($topic)
-                   OR toLower(p.category) CONTAINS toLower($topic)
+                WITH [w IN split(toLower($topic), ' ') WHERE size(w) > 3] AS words
+                MATCH (p:Policy)-[:RELATES_TO|DEPENDS_ON|SUPERSEDES|REFERENCES*1..2]-(related:Policy)
+                WHERE ANY(word IN words WHERE
+                        toLower(p.title) CONTAINS word
+                     OR toLower(p.category) CONTAINS word)
                 RETURN DISTINCT related.title + ' (v' + related.version + ')' AS relatedPolicy
                 LIMIT 10
                 """)

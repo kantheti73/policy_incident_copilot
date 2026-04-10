@@ -9,6 +9,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * Collects and publishes Prometheus-compatible metrics for the copilot system.
@@ -17,6 +19,7 @@ import java.time.Duration;
 @Component
 public class MetricsCollector {
 
+    private final MeterRegistry registry;
     private final Counter requestsTotal;
     private final Counter singleAgentRequests;
     private final Counter multiAgentRequests;
@@ -27,7 +30,11 @@ public class MetricsCollector {
     private final Timer requestLatency;
     private final DistributionSummary stepsPerRequest;
 
+    // Cached per-model token-distribution summaries to avoid re-creating on each call.
+    private final ConcurrentMap<String, DistributionSummary> tokensPerCallSummaries = new ConcurrentHashMap<>();
+
     public MetricsCollector(MeterRegistry registry) {
+        this.registry = registry;
         this.requestsTotal = Counter.builder("copilot.requests.total")
                 .description("Total copilot requests")
                 .register(registry);
@@ -97,5 +104,32 @@ public class MetricsCollector {
 
     public void recordError() {
         errorsTotal.increment();
+    }
+
+    /**
+     * Record token usage from a single LLM call. Tags by model and provider so dashboards can
+     * break down spend, throughput, and call counts per model.
+     */
+    public void recordTokenUsage(String provider, String model, int inputTokens, int outputTokens, double costUsd) {
+        registry.counter("copilot.llm.tokens.input", "model", model, "provider", provider).increment(inputTokens);
+        registry.counter("copilot.llm.tokens.output", "model", model, "provider", provider).increment(outputTokens);
+        registry.counter("copilot.llm.tokens.total", "model", model, "provider", provider).increment(inputTokens + outputTokens);
+        registry.counter("copilot.llm.calls.total", "model", model, "provider", provider).increment();
+
+        if (costUsd > 0.0) {
+            registry.counter("copilot.llm.cost.usd", "model", model, "provider", provider).increment(costUsd);
+        }
+
+        tokensPerCallSummaries
+                .computeIfAbsent(model, m -> DistributionSummary.builder("copilot.llm.tokens.per_call")
+                        .description("Tokens consumed per LLM call (input + output)")
+                        .tag("model", model)
+                        .tag("provider", provider)
+                        .publishPercentiles(0.5, 0.95, 0.99)
+                        .register(registry))
+                .record(inputTokens + outputTokens);
+
+        log.debug("LLM tokens recorded: model={}, in={}, out={}, cost=${}",
+                model, inputTokens, outputTokens, String.format("%.5f", costUsd));
     }
 }
