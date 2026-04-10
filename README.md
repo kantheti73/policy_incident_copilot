@@ -326,8 +326,28 @@ src/main/resources/
 
 - **Java 21** or newer (only needed if running the app outside containers)
 - **Podman + podman-compose** *or* **Docker + Docker Compose**
-- One of: **Anthropic API key** *or* **OpenAI API key** for the heavy-reasoning agents
-- Optionally, a **Pinecone API key** — without one, the app falls back to an in-memory vector store which works fine for dev but loses data on every restart
+- A **Doppler account** with the API keys loaded — see _Secrets management with Doppler_ below
+- Optionally, a **Pinecone API key** (in Doppler) — without one, the app falls back to an in-memory vector store which works fine for dev but loses data on every restart
+
+### Secrets management with Doppler
+
+This project uses [Doppler](https://doppler.com) for secret management. All API keys (Anthropic, OpenAI, Pinecone) live in Doppler — your laptop only stores a single bootstrap token. The Doppler CLI runs inside the `copilot-app` container at startup, fetches the secrets, and exports them as environment variables before the JVM launches. Spring Boot resolves `${ANTHROPIC_API_KEY}` and friends from those env vars exactly like before — no Java code changes were needed.
+
+**One-time setup in Doppler:**
+
+1. Sign up at [doppler.com](https://doppler.com) and create a project named `policy_incident_copilot_project`
+2. Create a config (the example uses `dev_personal`)
+3. Add these secrets to the config:
+
+| Secret | Required? | Notes |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | One of these | Activates Claude as the primary reasoning model |
+| `OPENAI_API_KEY` | One of these | Activates GPT as the primary reasoning model |
+| `PINECONE_API_KEY` | Optional | Without this, the app uses an in-memory vector store |
+
+`PINECONE_ENVIRONMENT` is **not** a secret — it stays in `.env`.
+
+4. Generate a **Service Token** for your config (read-only, scoped to one config). It looks like `dp.st.dev_personal.xxxxxxxxxxxxxxxxxx`.
 
 ### Setup
 
@@ -339,26 +359,22 @@ cd policy_incident_copilot
 
 **2. Create your `.env` file**
 
-Copy the template and fill in your API keys:
 ```bash
 cp .env.example .env
 ```
 
-Open `.env` and set ONE of `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` (if both are set, Anthropic wins). Optionally add your Pinecone key.
+Open `.env` and paste your Doppler service token:
 
 ```env
-ANTHROPIC_API_KEY=sk-ant-your-key-here
-# OR
-OPENAI_API_KEY=sk-your-openai-key
-
-# Optional
-PINECONE_API_KEY=your-pinecone-key
+DOPPLER_TOKEN=dp.st.dev_personal.your-token-here
 PINECONE_ENVIRONMENT=us-east-1
-
-# Local Ollama planner (defaults shown)
 PLANNER_LOCAL_ENABLED=true
 PLANNER_MODEL=phi3:mini
 ```
+
+That's the entire `.env` file. No API keys live on your laptop — they're all in Doppler.
+
+**Note for local non-container runs (`./mvnw spring-boot:run`):** The Doppler CLI is only installed inside the container image. If you want to run the app directly on the host without containers, install the [Doppler CLI](https://docs.doppler.com/docs/install-cli) on your machine and run `doppler run --project policy_incident_copilot_project --config dev_personal -- ./mvnw spring-boot:run`.
 
 **3. (Optional) Set up Pinecone**
 
@@ -408,10 +424,10 @@ You should see `{"documentId":"SEC-001","chunksCreated":9,"status":"SUCCESS"}` e
 
 The Neo4j knowledge graph is **automatically seeded on every startup** with policy nodes and `RELATES_TO` / `DEPENDS_ON` / `REFERENCES` edges — no manual step required. Look for `Neo4j policy graph ready: 12 Policy nodes, 21 relationships` in the app logs.
 
-**Prefer running the app locally and the rest in containers?**
+**Prefer running the app locally and the rest in containers?** Install the Doppler CLI on your host and wrap the Spring Boot launch:
 ```bash
 podman compose up -d neo4j prometheus grafana open-webui ollama
-./mvnw spring-boot:run
+doppler run --project policy_incident_copilot_project --config dev_personal -- ./mvnw spring-boot:run
 ```
 
 ---
