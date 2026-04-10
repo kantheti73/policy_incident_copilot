@@ -5,8 +5,8 @@ import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.data.message.AiMessage;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
@@ -15,13 +15,20 @@ import java.util.stream.Collectors;
 
 /**
  * Planner agent: decomposes complex requests into a structured plan of sub-tasks.
+ * Uses a lightweight local model (Ollama) for low latency and zero API cost,
+ * falling back to the primary model when Ollama is disabled.
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class PlannerAgent {
 
     private final ChatLanguageModel chatModel;
+
+    public PlannerAgent(@Qualifier("plannerModel") ChatLanguageModel chatModel) {
+        this.chatModel = chatModel;
+    }
+
+    private static final int MAX_PLAN_STEPS = 3;
 
     private static final String SYSTEM_PROMPT = """
             You are a Planner agent in a multi-agent incident triage and policy system.
@@ -30,19 +37,16 @@ public class PlannerAgent {
             Each sub-task should be a single, actionable step that another agent can execute.
 
             Rules:
-            - If the request involves safety-sensitive actions (disabling security, overriding policies),
-              include a mandatory safety review step.
+            - Produce EXACTLY 3 steps. No more, no fewer.
+            - Each step must be independent so it can run in parallel.
             - If logs are provided, include a log analysis step.
             - Always include a policy lookup step for relevant company policies.
-            - Always end with a verification/review step.
-            - Keep the plan to 3-7 steps maximum.
+            - If the request involves safety-sensitive actions, include a safety/policy review step.
 
             Output format: One step per line, numbered. Example:
-            1. Retrieve VPN troubleshooting policies
-            2. Analyze provided error logs for root cause patterns
-            3. Cross-reference findings with known incident database
-            4. Draft incident triage ticket with severity assessment
-            5. Safety review: verify no policy violations in recommended actions
+            1. Retrieve VPN troubleshooting and authentication policies
+            2. Analyze provided error logs for root cause patterns and affected systems
+            3. Identify policy violations or compliance concerns in the proposed actions
             """;
 
     public GraphState execute(GraphState state) {
@@ -60,6 +64,7 @@ public class PlannerAgent {
                 .map(String::trim)
                 .filter(line -> !line.isEmpty())
                 .filter(line -> Character.isDigit(line.charAt(0)))
+                .limit(MAX_PLAN_STEPS)
                 .collect(Collectors.toList());
 
         state.setPlan(plan);

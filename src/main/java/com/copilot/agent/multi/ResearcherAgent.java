@@ -12,9 +12,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -44,7 +47,7 @@ public class ResearcherAgent {
             """;
 
     public GraphState execute(GraphState state) {
-        log.info("[{}] ResearcherAgent executing plan steps", state.getTraceId());
+        log.info("[{}] ResearcherAgent executing plan steps in parallel", state.getTraceId());
         state.incrementStep();
 
         // Retrieve policy documents relevant to the overall query
@@ -63,42 +66,62 @@ public class ResearcherAgent {
                 ? "No additional policy relationships found."
                 : "Related policies from knowledge graph:\n" + String.join("\n", relatedPolicies);
 
-        // Execute each plan step
-        Map<String, String> findings = new HashMap<>();
-        for (String planStep : state.getPlan()) {
-            if (state.isStepLimitReached()) {
-                log.warn("[{}] Step limit reached during research", state.getTraceId());
-                break;
+        String logsContext = state.getRawLogs() != null ? "Logs:\n" + state.getRawLogs() : "";
+
+        // Execute plan steps in parallel — each step is an independent LLM call
+        ExecutorService executor = Executors.newFixedThreadPool(Math.max(1, state.getPlan().size()));
+        try {
+            List<CompletableFuture<Map.Entry<String, String>>> futures = state.getPlan().stream()
+                    .map(planStep -> CompletableFuture.supplyAsync(
+                            () -> Map.entry(planStep, executePlanStep(planStep, policyContext, graphContext, logsContext)),
+                            executor))
+                    .toList();
+
+            Map<String, String> findings = futures.stream()
+                    .map(CompletableFuture::join)
+                    .collect(Collectors.toMap(
+                            Map.Entry::getKey,
+                            Map.Entry::getValue,
+                            (a, b) -> a,
+                            java.util.LinkedHashMap::new));
+
+            state.setResearchFindings(findings);
+            log.info("[{}] ResearcherAgent completed {} findings (parallel)", state.getTraceId(), findings.size());
+        } finally {
+            executor.shutdown();
+            try {
+                if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                    executor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                executor.shutdownNow();
             }
-            state.incrementStep();
-
-            String researchPrompt = String.format("""
-                    Plan step to execute: %s
-
-                    Policy context:
-                    %s
-
-                    %s
-
-                    %s
-
-                    Provide your findings for this step.
-                    """,
-                    planStep,
-                    policyContext,
-                    graphContext,
-                    state.getRawLogs() != null ? "Logs:\n" + state.getRawLogs() : "");
-
-            AiMessage response = chatModel.generate(
-                    SystemMessage.from(SYSTEM_PROMPT),
-                    UserMessage.from(researchPrompt)
-            ).content();
-
-            findings.put(planStep, response.text());
         }
 
-        state.setResearchFindings(findings);
-        log.info("[{}] ResearcherAgent completed {} findings", state.getTraceId(), findings.size());
         return state;
+    }
+
+    private String executePlanStep(String planStep, String policyContext, String graphContext, String logsContext) {
+        String researchPrompt = String.format("""
+                Plan step to execute: %s
+
+                Policy context:
+                %s
+
+                %s
+
+                %s
+
+                Provide your findings for this step.
+                """,
+                planStep, policyContext, graphContext, logsContext);
+
+        AiMessage response = chatModel.generate(
+                SystemMessage.from(SYSTEM_PROMPT),
+                UserMessage.from(researchPrompt)
+        ).content();
+
+        return response.text();
     }
 }

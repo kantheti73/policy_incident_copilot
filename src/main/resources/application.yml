@@ -31,6 +31,12 @@ copilot:
       model-name: ${OPENAI_MODEL:gpt-4o}
     max-tokens: 4096
     temperature: 0.1
+    # Lightweight local model for the Planner agent — uses Ollama sidecar
+    # Set enabled=false to disable and reuse the primary model for planning
+    planner:
+      enabled: ${PLANNER_LOCAL_ENABLED:true}
+      base-url: ${OLLAMA_BASE_URL:http://ollama:11434}
+      model-name: ${PLANNER_MODEL:phi3:mini}
   routing:
     complexity-threshold: 0.6
     high-risk-keywords:

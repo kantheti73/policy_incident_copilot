@@ -16,7 +16,6 @@ import java.util.Map;
 
 import static org.bsc.langgraph4j.StateGraph.END;
 import static org.bsc.langgraph4j.StateGraph.START;
-import static org.bsc.langgraph4j.action.AsyncEdgeAction.edge_async;
 import static org.bsc.langgraph4j.action.AsyncNodeAction.node_async;
 
 /**
@@ -24,7 +23,7 @@ import static org.bsc.langgraph4j.action.AsyncNodeAction.node_async;
  *
  * Flow: InputGuardrail → Planner → Researcher → Orchestrator → Critic → OutputGuardrail → END
  *
- * The Critic can loop back to Researcher if the response needs revision (max 1 retry).
+ * The Critic reviews and may revise the response, but always finalizes it (no retry loop).
  */
 @Slf4j
 @Component
@@ -90,22 +89,7 @@ public class MultiAgentGraph {
                 .addEdge("planner", "researcher")
                 .addEdge("researcher", "orchestrator")
                 .addEdge("orchestrator", "critic")
-
-                // Conditional edge: Critic can approve → output_guardrail or revise → researcher
-                .addConditionalEdges("critic",
-                        edge_async(state -> {
-                            GraphState gs = extractGraphState(state);
-                            if (gs.isSafetyApproved() || gs.isStepLimitReached()) {
-                                return "approved";
-                            }
-                            return "revise";
-                        }),
-                        Map.of(
-                                "approved", "output_guardrail",
-                                "revise", "researcher"
-                        )
-                )
-
+                .addEdge("critic", "output_guardrail")
                 .addEdge("output_guardrail", END);
 
         return graph;
