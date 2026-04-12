@@ -456,6 +456,82 @@ Open WebUI thinks it's talking to an OpenAI API. Our `OpenAICompatibleController
 
 ---
 
+## Long Context Handling (Log Inputs)
+
+When a user pastes error logs into the chat — either via the `rawLogs` field in the API or inline in an Open WebUI message — the system applies a deliberate pipeline to keep the content safe, bounded, and useful.
+
+### How logs enter the system
+
+| Entry method | How it works |
+|---|---|
+| **API `rawLogs` field** | The caller explicitly separates the question from the logs in the JSON payload. Cleanest path. |
+| **Inline in chat message** | The `OpenAICompatibleController` auto-detects log lines (heuristic: more than 3 lines starting with `YYYY-MM-DD`) and splits them out of the query into a separate `rawLogs` field. Users don't need to know about the API schema. |
+
+### What happens to the logs, step by step
+
+| Step | What runs | Why |
+|---|---|---|
+| **1. PII redaction** | `PIIRedactor.redact(rawLogs)` runs in the input guardrails | SSNs, emails, phone numbers, credit card numbers, and internal IP addresses (10.x, 172.16-31.x, 192.168.x) are replaced with `[REDACTED]` before any agent or LLM sees them |
+| **2. Complexity scoring** | `ComplexityClassifier` adds +0.3 to the score when `rawLogs` is present | Any meaningful log paste pushes toward multi-agent mode, which includes the critic safety review |
+| **3. Planner truncation** | The `PlannerAgent` sees only the first 2,000 characters of the logs, followed by `... [truncated]` | The planner's job is to decompose the problem into sub-tasks. It needs a flavor of the logs, not the full content. This keeps planner-stage token costs low — especially important since the planner runs on the lightweight local model. |
+| **4. Full logs to Researcher only** | The `ResearcherAgent` is the only agent that receives the complete sanitized log content | This is where log-to-policy correlation actually happens. The Orchestrator and Critic work from the Researcher's findings, not the raw logs. |
+| **5. Output PII sweep** | `PIIRedactor.redact(finalResponse)` runs in the output guardrails | Catches any internal IP, email, or identifier that the LLM might echo back from the log content |
+| **6. Internal IP leak detection** | `SafetyReviewer.postCheck()` flags RFC 1918 addresses in the response | Even after PII redaction, this is a safety net that catches IPs the LLM might reconstruct or hallucinate |
+| **7. No log persistence** | Only the user's query text goes into `ConversationMemory` — `rawLogs` is a separate field that is never stored | When the session ends or the container restarts, the log content is gone |
+
+### Size limits
+
+| Control | Value | Purpose |
+|---|---|---|
+| `copilot.guardrails.max-input-length` | 50,000 characters | Prevents someone pasting a 100 MB log and blowing up token costs |
+| Planner log preview | First 2,000 characters | Keeps the local planner model fast and focused |
+| Conversation memory cap | 20 turns (40 entries) | Prevents unbounded growth of session history |
+
+---
+
+## Memory Discipline
+
+The system is designed to avoid persisting sensitive data. Conversation memory stores only safe, sanitized content — never credentials, never raw logs, never PII.
+
+### The two-component design
+
+| Component | Role |
+|---|---|
+| `SafeMemoryFilter` | The sanitizer. Runs three regex passes on every message before it is stored: credential patterns (`password: xyz`), base64 high-entropy values (`key=AIzaSy...`), and a configurable keyword list. Any match is replaced with `[SENSITIVE_CONTENT_REMOVED]`. |
+| `ConversationMemory` | The store. An in-memory `ConcurrentHashMap` keyed by session ID. Applies the filter on every write. Enforces a hard retention cap. Never persists to disk. |
+
+### The rules
+
+1. **Sanitize on write, not on read.** Every user message and every assistant message passes through `SafeMemoryFilter.filter()` before being stored. The stored copy is already clean — there is no code path that can read unsanitized content from memory.
+
+2. **Per-session isolation.** Memory is keyed by `sessionId`. One user's conversation cannot leak into another's.
+
+3. **Hard retention cap.** `copilot.memory.max-conversation-turns` defaults to 20 (40 entries including both sides). When the cap is exceeded, the oldest entries are evicted first.
+
+4. **In-memory only.** The backing store is a plain `ConcurrentHashMap`. Nothing is written to Pinecone, Neo4j, or any file. Every container restart wipes all conversation memory. This is a deliberate privacy choice.
+
+5. **Session clearable on demand.** `clearSession(sessionId)` wipes everything for that session immediately.
+
+### What gets filtered
+
+| Pattern | Example caught |
+|---|---|
+| Credential patterns (`password`, `secret`, `token`, `api_key`, `credential`, `bearer` followed by `:` or `=` and a value) | `password: Hunter2` → `[SENSITIVE_CONTENT_REMOVED]` |
+| Base64/high-entropy secrets (20+ alphanumeric chars after `key`/`secret`/`token`) | `api_key=sk_live_abc123def456ghi789` → `[SENSITIVE_CONTENT_REMOVED]` |
+| Configurable keyword list (`copilot.memory.sensitive-keywords`) | Each keyword + `:` or `=` + value is caught. Default list: `password`, `secret`, `token`, `api-key`, `credential`. |
+
+### Defense in depth
+
+Memory filtering is not the only layer. It sits behind PII redaction (which strips SSNs, emails, phones, IPs before any agent sees them) and in front of the output guardrails (which redact anything the LLM leaks back). The three layers work independently, so even if one misses something, the next catches it.
+
+| Layer | Timing | What it catches |
+|---|---|---|
+| **PIIRedactor** | Input guardrails (before agents) | Structured PII: SSN, credit card, email, phone, internal IPs |
+| **SafeMemoryFilter** | On memory write (after agents) | Credentials and secrets in key=value form |
+| **Output guardrails** | Before response delivery | Anything the LLM leaks: IPs, credentials, unsafe recommendations |
+
+---
+
 ## API Reference
 
 You can also hit the API directly (useful for integrations, scripts, or testing).
